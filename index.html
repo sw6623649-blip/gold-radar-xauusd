@@ -69,12 +69,14 @@ async function fetchSeries(){
  datasets.H1=normaliseBars(h1);
  datasets.H4=aggregate(datasets.H1,4);
  if(datasets.H4.length<55)throw new Error("Data H4 hasil agregasi belum cukup untuk EMA50.");
- // Satu sumber untuk harga, chart, indikator, dan sinyal: close candle M5 terakhir.
- const latest=datasets.M5.at(-1);
+ // Freshness harus dinilai pada timeframe yang sedang dilihat.
+ // Candle H4 yang dibuka pukul 17:00 WIB masih aktif sampai 21:00 WIB.
+ const latest=(datasets[currentTF]||datasets.M15).at(-1);
  const age=Math.max(0,(Date.now()-latest.t)/1000);
- quote={price:latest.c,asOf:new Date(latest.t).toISOString(),age,status:age<=600?"fresh":"stale"};
+ const tfSeconds=({M5:300,M15:900,H1:3600,H4:14400})[currentTF]||900;
+ const maxAge=tfSeconds+600;
+ quote={price:latest.c,asOf:new Date(latest.t).toISOString(),age,status:age<=maxAge?"fresh":"stale"};
  feedStatus=quote.status;
- if(feedStatus!=="fresh")throw new Error("Candle M5 terakhir sudah berumur "+Math.round(age)+" detik. Feed dianggap stale; sinyal entry dikunci.");
  feedStamp=latest.t;
  return {chartMeta:m15};
 }
@@ -107,14 +109,14 @@ function analyse(c,h1,h4){
  const bearBreak=last.c<lo-A*.05&&last.c<e20&&R<48&&R>22;
  const bullPull=up&&last.l<=e20+A*.25&&last.c>e20&&last.c>last.o&&last.c>prev.c&&R>50&&R<70;
  const bearPull=dn&&last.h>=e20-A*.25&&last.c<e20&&last.c<last.o&&last.c<prev.c&&R<50&&R>30;
- const fresh=quote&&quote.status==="fresh"&&quote.age<=180;
+ const fresh=quote&&quote.status==="fresh";
  const priceAligned=true; // Harga dan indikator memakai candle dari sumber chart yang sama.
  let side="WAIT",watch="",reason="Belum ada konfirmasi. Scanner tetap memantau breakout, retest EMA20, dan rejection pada struktur 20 candle.";
  if((bullBreak||bullPull)&&alignedBuy&&fresh&&priceAligned)side="BUY";
  else if((bearBreak||bearPull)&&alignedSell&&fresh&&priceAligned)side="SELL";
  else if(up&&alignedBuy&&R>48&&R<70){side="PANTAU BUY";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bullish. Menunggu pullback ke EMA20 dan candle bullish konfirmasi."}
  else if(dn&&alignedSell&&R>30&&R<52){side="PANTAU SELL";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bearish. Menunggu pullback ke EMA20 dan candle bearish konfirmasi."}
- else if(!fresh){reason="Candle M5 dari sumber chart sudah stale. Sinyal entry dikunci sampai data segar."}
+ else if(!fresh){reason="Candle "+currentTF+" dari sumber chart sudah melewati batas freshness. Sinyal entry dikunci."}
  else if(!alignedBuy&&!alignedSell){reason="H1 dan H4 belum searah. Scanner menunggu konfluensi multi-timeframe."}
  const confirmed=side==="BUY"||side==="SELL",entry=last.c;
  const swingLow=Math.min(...a.slice(-10).map(x=>x.l)),swingHigh=Math.max(...a.slice(-10).map(x=>x.h));
@@ -172,10 +174,10 @@ async function load(){
   if(!active)throw new Error("Data timeframe "+currentTF+" belum tersedia.");
   paint(currentTF,active,datasets);
   $("dot").className="dot "+(quote.status==="fresh"&&quote.age<=180?"ok":"");
-  $("connection").textContent=quote.status==="fresh"&&quote.age<=180?"Spot feed fresh":"Spot feed stale/unknown";
+  $("connection").textContent=quote.status==="fresh"?"Candle "+currentTF+" fresh":"Candle "+currentTF+" stale";
   $("feedName").textContent="XAUS OHLC chart · satu sumber untuk harga dan analisis";
   $("error").style.display="block";
-  $("error").textContent="Sumber quote: XAUS XAU/USD · "+quote.status+" · umur data "+(Number.isFinite(quote.age)?Math.round(quote.age)+" detik":"tidak diketahui")+". Candle OHLC historis berasal dari endpoint chart XAUS yang memakai proxy Yahoo Finance; bukan kutipan broker. Harga broker dapat berbeda.";
+  $("error").textContent="Sumber: XAUS OHLC chart (proxy Yahoo Finance) · candle "+currentTF+" "+quote.status+" · umur candle "+(Number.isFinite(quote.age)?Math.round(quote.age/60)+" menit":"tidak diketahui")+". Candle H4 aktif dapat berumur hingga 4 jam sejak pembukaan. Harga broker dapat berbeda."
   $("error").style.borderLeftColor="#70b7ff";$("error").style.background="#152335";$("error").style.color="#c8ddf7";
  }catch(e){
   $("dot").className="dot";$("connection").textContent="Feed gagal";
