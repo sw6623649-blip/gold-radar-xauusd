@@ -23,7 +23,7 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 </section>
 <section class="layout">
 <div class="panel">
-<div class="row"><div><div class="label">Candlestick & indikator</div><div style="font-weight:700;margin-top:4px">XAUUSD · <span id="tfLabel">M15</span></div></div><div class="toolbar" id="tfs"><button class="btn" data-tf="M5">M5</button><button class="btn active" data-tf="M15">M15</button><button class="btn" data-tf="H1">H1</button><button class="btn" data-tf="H4">H4</button></div></div>
+<div class="row"><div><div class="label">Candlestick & indikator</div><div style="font-weight:700;margin-top:4px">XAUUSD · <span id="tfLabel">M15</span></div></div><div class="toolbar" id="tfs"><button class="btn" data-tf="M5" class="active">M5</button><button class="btn active" data-tf="M15">M15</button><button class="btn" data-tf="H1">H1</button><button class="btn" data-tf="H4">H4</button></div></div>
 <canvas id="chart" width="1000" height="440"></canvas>
 <div class="metrics"><div class="metric"><span class="label">RSI 14</span><strong id="rsi">—</strong></div><div class="metric"><span class="label">ATR 14</span><strong id="atr">—</strong></div><div class="metric"><span class="label">EMA 20</span><strong id="ema20">—</strong></div><div class="metric"><span class="label">EMA 50</span><strong id="ema50">—</strong></div></div>
 </div>
@@ -37,7 +37,7 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 </main>
 <script>
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toFixed(2):"—";
-let currentTF="M15",datasets={},refreshing=false,quote=null,feedStamp=null,feedStatus="unknown";
+let currentTF="M5",datasets={},refreshing=false,quote=null,feedStamp=null,feedStatus="unknown";
 const API="https://xaus.com/api/v1";
 const jkt=t=>new Date(t).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"});
 async function getJSON(url){
