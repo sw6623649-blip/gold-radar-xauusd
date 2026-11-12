@@ -32,7 +32,7 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 <div class="signal wait" id="signalBox"><div class="row"><strong class="tag" id="signalTag">MENUNGGU DATA</strong><span class="muted" id="confidence">—</span></div><div style="font-size:21px;font-weight:800;margin:13px 0 5px" id="signalTitle">Belum ada setup</div><div class="muted" id="signalReason">Mengambil data candle aktual dari feed publik.</div><div class="grid2"><div class="kv"><span>Entry / area</span><b id="entry">—</b></div><div class="kv"><span>Stop Loss</span><b id="sl">—</b></div><div class="kv"><span>Take Profit 1</span><b id="tp1">—</b></div><div class="kv"><span>Take Profit 2</span><b id="tp2">—</b></div><div class="kv"><span>Risk : Reward</span><b id="rr">—</b></div><div class="kv"><span>Invalidasi</span><b id="invalid">—</b></div></div></div>
 <div class="label" style="margin-top:18px">Multi-timeframe scanner</div><table class="table"><thead><tr><th>TF</th><th>Bias</th><th>RSI</th><th>Status</th></tr></thead><tbody id="tfRows"><tr><td colspan="4" class="muted">Menunggu data...</td></tr></tbody></table>
 </div>
-<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">XAUS quote + OHLC chart (Yahoo Finance proxy)</strong></div><button class="btn" id="refresh">↻ Refresh data</button></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Data: quote spot XAUS memiliki timestamp dan status freshness. Candle OHLC chart memakai proxy Yahoo Finance dan bukan harga broker. Candle timeframe lebih tinggi H4 diagregasi dari H1. Harga indikatif dapat berbeda dari broker; sinyal hanya referensi teknikal, bukan jaminan profit. Verifikasi spread, harga broker, ukuran posisi, dan risiko sebelum entry.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
+<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">XAUS quote + OHLC chart (Yahoo Finance proxy)</strong></div><button class="btn" id="refresh">↻ Refresh data</button></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Data: quote spot XAUS memiliki timestamp dan status freshness. Candle OHLC chart memakai proxy Yahoo Finance dan bukan harga broker. Candle H4 diagregasi dari H1 dengan batas sesi WIB 01/05/09/13/17/21 dan zoom 28 candle terakhir. Harga indikatif dapat berbeda dari broker; sinyal hanya referensi teknikal, bukan jaminan profit. Verifikasi spread, harga broker, ukuran posisi, dan risiko sebelum entry.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
 </section>
 </main>
 <script>
@@ -80,8 +80,11 @@ async function fetchSeries(){
 }
 function aggregate(bars,hours){
  const grouped=new Map(),bucket=hours*3600000;
+ // Align H4 candle opens to 01:00, 05:00, 09:00, 13:00, 17:00, 21:00 WIB.
+ // That corresponds to UTC bucket boundaries at 18:00, 22:00, 02:00, etc.
+ const offset=hours===4?2*3600000:0;
  for(const b of bars){
-  const key=Math.floor(b.t/bucket)*bucket;
+  const key=Math.floor((b.t-offset)/bucket)*bucket+offset;
   if(!grouped.has(key))grouped.set(key,{t:key,o:b.o,h:b.h,l:b.l,c:b.c,v:b.v||0,isOpen:b.isOpen});
   else{const x=grouped.get(key);x.h=Math.max(x.h,b.h);x.l=Math.min(x.l,b.l);x.c=b.c;x.v+=b.v||0;x.isOpen=x.isOpen||b.isOpen;}
  }
@@ -122,10 +125,11 @@ function analyse(c,h1,h4){
  if(confirmed)reason=(side==="BUY"?(bullBreak?"Breakout swing high 20 candle":"Pullback EMA20 bullish"):(bearBreak?"Breakout swing low 20 candle":"Pullback EMA20 bearish"))+". EMA20/50 searah, RSI "+fmt(R)+", dan tren H1/H4 searah.";
  return {side,watch,reason,entry,sl,tp1,tp2,score:confirmed?Math.min(95,75+(t1.bias===t4.bias?10:0)+(bullBreak||bearBreak?5:0)):0,R,A,e20,e50,bias:up?"BULLISH":dn?"BEARISH":"SIDEWAYS",last,hi,lo,fresh,priceAligned};
 }
+function tfForDraw(c){return currentTF==="H4"?28:currentTF==="H1"?48:currentTF==="M15"?64:80}
 function draw(c){
  const cv=$('chart'),ctx=cv.getContext('2d'),w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#0b121c';ctx.fillRect(0,0,w,h);
  if(!c?.length){ctx.fillStyle='#9aa9bd';ctx.font='18px sans-serif';ctx.fillText('Belum ada candle dari feed',30,50);return}
- const arr=c.slice(-80),min=Math.min(...arr.map(x=>x.l)),max=Math.max(...arr.map(x=>x.h)),pad=(max-min)*.12||1,lo=min-pad,hi=max+pad,py=v=>h-24-(v-lo)/(hi-lo)*(h-48);
+ const visible=tfForDraw(c);const arr=c.slice(-visible),min=Math.min(...arr.map(x=>x.l)),max=Math.max(...arr.map(x=>x.h)),pad=(max-min)*.12||1,lo=min-pad,hi=max+pad,py=v=>h-24-(v-lo)/(hi-lo)*(h-48);
  ctx.strokeStyle='#233145';ctx.lineWidth=1;ctx.font='12px sans-serif';for(let i=0;i<6;i++){let y=25+i*(h-50)/5;ctx.beginPath();ctx.moveTo(10,y);ctx.lineTo(w-65,y);ctx.stroke();let val=hi-i*(hi-lo)/5;ctx.fillStyle='#9aa9bd';ctx.fillText(val.toFixed(2),w-58,y+4)}
  let step=(w-95)/arr.length,cw=Math.max(3,step*.55);
  arr.forEach((v,i)=>{let x=12+i*step+step/2,col=v.c>=v.o?'#37c987':'#f06b70';ctx.strokeStyle=col;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x,py(v.h));ctx.lineTo(x,py(v.l));ctx.stroke();let y=Math.min(py(v.o),py(v.c)),ht=Math.max(1,Math.abs(py(v.o)-py(v.c)));ctx.fillRect(x-cw/2,y,cw,ht)});
