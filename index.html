@@ -119,7 +119,7 @@ function loadBrokerCSV(file){
    paint("M5",datasets.M5,datasets);
    $("dot").className="dot ok";$("connection").textContent="Broker CSV aktif";
    $("feedName").textContent="Data broker impor · "+file.name;
-   $("error").style.display="block";$("error").textContent="Menggunakan "+bars.length+" candle M5 dari CSV broker. M15/H1/H4 diagregasi dari file yang sama. Timestamp mengikuti waktu pada ekspor CSV; verifikasi zona waktu platform.";
+   $("error").style.display="block";$("error").textContent="Menggunakan "+bars.length+" candle M5 dari file yang diimpor. M15/H1/H4 diagregasi dari file yang sama. Timestamp mengikuti waktu pada ekspor CSV; verifikasi zona waktu platform. Data impor ini belum otomatis live."
    $("error").style.borderLeftColor="#37c987";$("error").style.background="#123528";$("error").style.color="#b9f0d5";
   }catch(e){$("error").style.display="block";$("error").textContent=e.message}
  };
@@ -221,7 +221,7 @@ async function load(){
   paint(currentTF,active,datasets);
   $("dot").className="dot "+(quote.status==="fresh"&&quote.age<=180?"ok":"");
   $("connection").textContent=quote.status==="fresh"?"Candle "+currentTF+" fresh":"Candle "+currentTF+" stale";
-  $("feedName").textContent="XAUS OHLC chart · satu sumber untuk harga dan analisis";
+  $("feedName").textContent="XAUS OHLC chart · feed spot indikatif, bukan broker";
   $("error").style.display="block";
   $("error").textContent="Sumber: XAUS OHLC chart (proxy Yahoo Finance) · candle "+currentTF+" "+quote.status+" · umur candle "+(Number.isFinite(quote.age)?Math.round(quote.age/60)+" menit":"tidak diketahui")+". Candle H4 aktif dapat berumur hingga 4 jam sejak pembukaan. Harga broker dapat berbeda."
   $("error").style.borderLeftColor="#70b7ff";$("error").style.background="#152335";$("error").style.color="#c8ddf7";
