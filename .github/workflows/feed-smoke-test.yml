@@ -1,0 +1,100 @@
+name: Feed API smoke test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/feed-smoke-test.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  test-feeds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public market-data endpoints
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request, urllib.error, datetime, sys
+
+          results = []
+          def get(name, url, validate):
+              req = urllib.request.Request(url, headers={"User-Agent":"gold-radar-feed-check/1.0","Accept":"application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      raw = r.read()
+                      data = json.loads(raw)
+                      detail = validate(data)
+                      results.append((name, "PASS", detail))
+              except urllib.error.HTTPError as e:
+                  body = e.read(500).decode("utf-8", "replace")
+                  results.append((name, "BLOCKED", f"HTTP {e.code}: {body[:180]}"))
+              except Exception as e:
+                  results.append((name, "FAIL", str(e)[:220]))
+
+          def xa_spot(d):
+              state = d.get("data_state") or {}
+              price = d.get("spot_usd_oz") or (d.get("xau") or {}).get("price")
+              if not isinstance(price, (int,float)) or price <= 0: raise ValueError("missing positive XAU/USD spot price")
+              stamp = d.get("price_as_of") or state.get("as_of") or d.get("updated_at")
+              age = state.get("age_seconds")
+              if d.get("stale") is True or state.get("status") != "fresh": raise ValueError(f"price not fresh: status={state.get('status')} stale={d.get('stale')}")
+              if age is not None and age > 180: raise ValueError(f"spot age {age}s exceeds 180s")
+              return f"spot={price}; state={state.get('status')}; age={age}s; as_of={stamp}"
+
+          def xa_intraday(d):
+              pts = d.get("points") or d.get("data") or []
+              if len(pts) < 10: raise ValueError(f"only {len(pts)} intraday points")
+              good = sum(1 for p in pts if isinstance(p,dict) and isinstance(p.get("p"),(int,float)) and p["p"]>0)
+              if good < 10: raise ValueError(f"only {good} valid price points")
+              state = d.get("data_state") or {}
+              if state.get("status") not in ("fresh","stale"): raise ValueError(f"unknown data_state {state}")
+              return f"points={len(pts)}; valid={good}; state={state.get('status')}; coverage={d.get('coverage_seconds')}s"
+
+          def rma_symbols(d):
+              rows = d.get("symbols") or d.get("data") or d
+              if isinstance(rows,dict): rows = list(rows.values())
+              if not isinstance(rows,list): raise ValueError("unexpected symbol-list format")
+              found = any((x.get("symbolCode") or x.get("symbol") or x.get("code")) == "XAUUSD" for x in rows if isinstance(x,dict))
+              if not found: raise ValueError("XAUUSD not listed in public symbol directory")
+              return f"XAUUSD listed; total symbols={len(rows)}"
+
+          def rma_health(d):
+              return f"health response keys={','.join(list(d)[:8])}" if isinstance(d,dict) else "health endpoint returned JSON"
+
+          get("XAUS spot", "https://xaus.com/api/v1/spot?compact=1", xa_spot)
+          get("XAUS intraday", "https://xaus.com/api/v1/intraday?symbol=xau&hours=24", xa_intraday)
+          get("RealMarketAPI health", "https://api.realmarketapi.com/api/v1/health", rma_health)
+          get("RealMarketAPI public symbols", "https://api.realmarketapi.com/api/v1/symbol", rma_symbols)
+
+          # Confirm whether candle endpoint is accessible without exposing or inventing a key.
+          try:
+              req = urllib.request.Request("https://api.realmarketapi.com/api/v1/price?symbolCode=XAUUSD&timeFrame=M5", headers={"User-Agent":"gold-radar-feed-check/1.0"})
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  d=json.loads(r.read())
+                  results.append(("RealMarketAPI XAUUSD M5 without key", "PASS" if isinstance(d,dict) else "FAIL", "endpoint returned JSON without API key"))
+          except urllib.error.HTTPError as e:
+              results.append(("RealMarketAPI XAUUSD M5 without key", "EXPECTED AUTH", f"HTTP {e.code}; endpoint requires API key"))
+          except Exception as e:
+              results.append(("RealMarketAPI XAUUSD M5 without key", "FAIL", str(e)[:180]))
+
+          print("FEED_SMOKE_TEST_UTC", datetime.datetime.now(datetime.timezone.utc).isoformat())
+          for n,s,d in results: print(f"{s} | {n} | {d}")
+          with open("feed-smoke-results.json","w") as f:
+              json.dump([{"name":n,"status":s,"detail":d} for n,s,d in results],f,indent=2)
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## Market data feed smoke test\n\n")
+              for n,s,d in results: f.write(f"- **{s}** — {n}: {d}\n")
+          if any(s == "FAIL" for _,s,_ in results): sys.exit(1)
+          PY
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-smoke-results
+          path: feed-smoke-results.json
+          retention-days: 7
