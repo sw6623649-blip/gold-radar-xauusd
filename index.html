@@ -105,14 +105,13 @@ function analyse(c,h1,h4){
  const bullPull=up&&last.l<=e20+A*.25&&last.c>e20&&last.c>last.o&&last.c>prev.c&&R>50&&R<70;
  const bearPull=dn&&last.h>=e20-A*.25&&last.c<e20&&last.c<last.o&&last.c<prev.c&&R<50&&R>30;
  const fresh=quote&&quote.status==="fresh"&&quote.age<=180;
- const priceAligned=quote&&Math.abs(quote.price-last.c)<=Math.max(A*2,last.c*.004);
+ const priceAligned=true; // Harga dan indikator memakai candle dari sumber chart yang sama.
  let side="WAIT",watch="",reason="Belum ada konfirmasi. Scanner tetap memantau breakout, retest EMA20, dan rejection pada struktur 20 candle.";
  if((bullBreak||bullPull)&&alignedBuy&&fresh&&priceAligned)side="BUY";
  else if((bearBreak||bearPull)&&alignedSell&&fresh&&priceAligned)side="SELL";
  else if(up&&alignedBuy&&R>48&&R<70){side="PANTAU BUY";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bullish. Menunggu pullback ke EMA20 dan candle bullish konfirmasi."}
  else if(dn&&alignedSell&&R>30&&R<52){side="PANTAU SELL";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bearish. Menunggu pullback ke EMA20 dan candle bearish konfirmasi."}
  else if(!fresh){reason="Candle M5 dari sumber chart sudah stale. Sinyal entry dikunci sampai data segar."}
- else 
  else if(!alignedBuy&&!alignedSell){reason="H1 dan H4 belum searah. Scanner menunggu konfluensi multi-timeframe."}
  const confirmed=side==="BUY"||side==="SELL",entry=last.c;
  const swingLow=Math.min(...a.slice(-10).map(x=>x.l)),swingHigh=Math.max(...a.slice(-10).map(x=>x.h));
