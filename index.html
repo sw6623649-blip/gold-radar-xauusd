@@ -63,7 +63,7 @@ function normaliseBars(data){
 async function fetchXausSpot(){
  try{
   const d=await getJSON(API+"/spot?compact=1");
-  const state=d.data_state||{},price=Number(d.spot_usd_oz),age=Number(state.age_seconds);
+  const state=d.data_state||{},price=Number(d.spot_usd_oz),age=typeof state.age_seconds==="number"?state.age_seconds:NaN;
   const fresh=state.status==="fresh"&&Number.isFinite(price)&&price>0&&Number.isFinite(age)&&age<=180&&d.stale!==true;
   xausSpot={price,age,status:fresh?"fresh":"stale",asOf:state.as_of||d.price_as_of||d.updated_at,source:state.source||d.source||"XAUS"};
  }catch(e){xausSpot={status:"unavailable",error:e.message};}
