@@ -16,7 +16,7 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 <header><div><div class="brand"><b>GOLD</b> RADAR <span class="muted">/ XAUUSD</span></div><div class="muted" style="font-size:11px;margin-top:4px">MARKET SCANNER · TECHNICAL ANALYSIS</div></div><div class="status"><span id="dot" class="dot"></span><span id="connection">Memuat data...</span></div></header>
 <main>
 <section class="top">
-<div class="panel"><div class="label">Harga XAUUSD · USD/oz</div><div class="price" id="price">—</div><div class="muted" id="change">Menunggu feed candle</div></div>
+<div class="panel"><div class="label">Harga spot XAU/USD · USD/oz</div><div class="price" id="price">—</div><div class="muted" id="change">Menunggu quote live</div></div>
 <div class="panel"><div class="label">Tren H1</div><div class="value" id="trend1">—</div><div class="muted" id="trend1sub">EMA 20 / 50</div></div>
 <div class="panel"><div class="label">Tren H4</div><div class="value" id="trend4">—</div><div class="muted" id="trend4sub">EMA 20 / 50</div></div>
 <div class="panel"><div class="label">Kondisi scanner</div><div class="value gold" id="scanner">SCANNING</div><div class="muted" id="scanSub">Mencari BUY dan SELL</div></div>
@@ -32,46 +32,100 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 <div class="signal wait" id="signalBox"><div class="row"><strong class="tag" id="signalTag">MENUNGGU DATA</strong><span class="muted" id="confidence">—</span></div><div style="font-size:21px;font-weight:800;margin:13px 0 5px" id="signalTitle">Belum ada setup</div><div class="muted" id="signalReason">Mengambil data candle aktual dari feed publik.</div><div class="grid2"><div class="kv"><span>Entry / area</span><b id="entry">—</b></div><div class="kv"><span>Stop Loss</span><b id="sl">—</b></div><div class="kv"><span>Take Profit 1</span><b id="tp1">—</b></div><div class="kv"><span>Take Profit 2</span><b id="tp2">—</b></div><div class="kv"><span>Risk : Reward</span><b id="rr">—</b></div><div class="kv"><span>Invalidasi</span><b id="invalid">—</b></div></div></div>
 <div class="label" style="margin-top:18px">Multi-timeframe scanner</div><table class="table"><thead><tr><th>TF</th><th>Bias</th><th>RSI</th><th>Status</th></tr></thead><tbody id="tfRows"><tr><td colspan="4" class="muted">Menunggu data...</td></tr></tbody></table>
 </div>
-<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">Dukascopy public historical candles</strong></div><button class="btn" id="refresh">↻ Refresh data</button></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Catatan: harga XAUUSD spot antar-broker dapat berbeda. Sumber publik dapat tertunda atau gagal diakses dari browser. Dashboard ini menghitung indikator dari candle yang berhasil diterima. Sinyal bersifat analisis teknikal, bukan jaminan hasil trading. Jangan entry tanpa memeriksa spread, ukuran posisi, dan risiko akun.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
+<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">XAUS quote + OHLC chart (Yahoo Finance proxy)</strong></div><button class="btn" id="refresh">↻ Refresh data</button></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Data: quote spot XAUS memiliki timestamp dan status freshness. Candle OHLC chart memakai proxy Yahoo Finance dan bukan harga broker. Candle timeframe lebih tinggi H4 diagregasi dari H1. Harga indikatif dapat berbeda dari broker; sinyal hanya referensi teknikal, bukan jaminan profit. Verifikasi spread, harga broker, ukuran posisi, dan risiko sebelum entry.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
 </section>
 </main>
 <script>
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toFixed(2):"—";
-let currentTF="M15",datasets={},refreshing=false;
-const baseUrl="https://www.dukascopy.com/datafeed";
-function interval(tf){return ({M5:5,M15:15,H1:60,H4:240})[tf]||15}
-function dukDate(d){return [d.getUTCFullYear(),String(d.getUTCMonth()+1).padStart(2,'0'),String(d.getUTCDate()).padStart(2,'0')].join('/')}
-async function fetchCandles(tf){
- const end=new Date(),start=new Date(end.getTime()-Math.max(3,tf==="H4"?45:tf==="H1"?15:4)*86400000);
- const period=interval(tf),out=[];let cursor=new Date(start);
- // Dukascopy public historical feed: XAUUSD instrument code xauusd
- while(cursor<end&&out.length<2400){
-  const next=new Date(Math.min(end.getTime(),cursor.getTime()+86400000));
-  const url=baseUrl+'/'+dukDate(cursor)+'/'+String(cursor.getUTCHours()).padStart(2,'0')+'h_ticks.bi5';
-  // Use public candle endpoint through Dukascopy's charting API fallback.
-  const api='https://www.dukascopy.com/swiss/english/marketwatch/historical/';
-  const t=Math.floor(cursor.getTime()/1000);
-  const q='https://fcsapi.com/api-v3/forex/history?symbol=XAUUSD&period='+period+'&from='+t+'&to='+Math.floor(next.getTime()/1000);
-  cursor=next;
+let currentTF="M15",datasets={},refreshing=false,quote=null,feedStamp=null,feedStatus="unknown";
+const API="https://xaus.com/api/v1";
+const jkt=t=>new Date(t).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"});
+async function getJSON(url){
+ const r=await fetch(url,{cache:"no-store"});
+ if(!r.ok)throw new Error("HTTP "+r.status+" saat mengambil "+url);
+ return await r.json();
+}
+function timeValue(v){
+ if(typeof v==="number")return v<1e12?v*1000:v;
+ const n=Date.parse(v);return Number.isFinite(n)?n:NaN;
+}
+function normaliseBars(data){
+ let rows=data.points||data.bars||data.ohlc||data.data;
+ if(!Array.isArray(rows))throw new Error("Respons chart tidak berisi array OHLC yang dikenali.");
+ const bars=rows.map(x=>({t:timeValue(x.t??x.time??x.timestamp??x.openTime),o:Number(x.o??x.open),h:Number(x.h??x.high),l:Number(x.l??x.low),c:Number(x.c??x.close),v:Number(x.v??x.volume??0),isOpen:!!x.isOpen}))
+ .filter(x=>Number.isFinite(x.t)&&[x.o,x.h,x.l,x.c].every(Number.isFinite)&&x.o>0&&x.h>0&&x.l>0&&x.c>0&&x.h>=x.l)
+ .sort((a,b)=>a.t-b.t);
+ if(bars.length<55)throw new Error("Data chart hanya mengembalikan "+bars.length+" candle; minimum 55 dibutuhkan untuk EMA50.");
+ return bars;
+}
+async function fetchSeries(){
+ const urls=[
+  getJSON(API+"/spot?compact=1"),
+  getJSON(API+"/chart?symbol=xau&range=5d&interval=5m"),
+  getJSON(API+"/chart?symbol=xau&range=5d&interval=15m"),
+  getJSON(API+"/chart?symbol=xau&range=3mo&interval=1h")
+ ];
+ const [s,m5,m15,h1]=await Promise.all(urls);
+ const spotPrice=Number(s.spot_usd_oz??s.xau?.price);
+ if(!Number.isFinite(spotPrice)||spotPrice<=0)throw new Error("Quote XAU/USD tidak valid dari endpoint spot.");
+ const state=s.data_state||{};
+ const asOf=s.price_as_of||state.as_of||s.updated_at||null;
+ const age=Number.isFinite(Number(state.age_seconds))?Number(state.age_seconds):(asOf?(Date.now()-Date.parse(asOf))/1000:Infinity);
+ quote={price:spotPrice,asOf,age,status:state.status|| (s.stale?"stale":"unknown")};
+ feedStatus=quote.status;
+ if(feedStatus==="unavailable")throw new Error("Sumber spot melaporkan data unavailable.");
+ datasets.M5=normaliseBars(m5);
+ datasets.M15=normaliseBars(m15);
+ datasets.H1=normaliseBars(h1);
+ datasets.H4=aggregate(datasets.H1,4);
+ if(datasets.H4.length<55)throw new Error("Data H4 hasil agregasi belum cukup untuk EMA50. Tambahkan rentang data H1.");
+ feedStamp=m15.updated_at||m15.data_state?.as_of||datasets.M15.at(-1).t;
+ return {spot:s,chartMeta:m15};
+}
+function aggregate(bars,hours){
+ const grouped=new Map(),bucket=hours*3600000;
+ for(const b of bars){
+  const key=Math.floor(b.t/bucket)*bucket;
+  if(!grouped.has(key))grouped.set(key,{t:key,o:b.o,h:b.h,l:b.l,c:b.c,v:b.v||0,isOpen:b.isOpen});
+  else{const x=grouped.get(key);x.h=Math.max(x.h,b.h);x.l=Math.min(x.l,b.l);x.c=b.c;x.v+=b.v||0;x.isOpen=x.isOpen||b.isOpen;}
  }
- const url='https://www.dukascopy.com/datafeed/'+dukDate(start)+'/00h_candles_min_1.bi5';
- // Browser access is attempted through the public chart data endpoint.
- const proxy='https://api.allorigins.win/raw?url='+encodeURIComponent('https://www.dukascopy.com/datafeed/'+dukDate(start)+'/00h_ticks.bi5');
- throw new Error('Feed candle Dukascopy perlu endpoint candle publik yang kompatibel; tidak menerima data candle dari endpoint yang diuji. Dashboard tidak mengisi harga simulasi.');
+ return [...grouped.values()].sort((a,b)=>a.t-b.t);
 }
 function ema(a,p){let k=2/(p+1),v=a[0];return a.map((x,i)=>v=i===0?x:x*k+v*(1-k))}
 function rsi(a,p=14){if(a.length<p+1)return NaN;let g=0,l=0;for(let i=a.length-p;i<a.length;i++){let d=a[i]-a[i-1];if(d>0)g+=d;else l-=d}return 100-100/(1+(g/p)/(l/p||1e-9))}
 function atr(c,p=14){if(c.length<p+1)return NaN;let s=0;for(let i=c.length-p;i<c.length;i++)s+=Math.max(c[i].h-c[i].l,Math.abs(c[i].h-c[i-1].c),Math.abs(c[i].l-c[i-1].c));return s/p}
-function analyse(c){
- const closes=c.map(x=>x.c),e20=ema(closes,20),e50=ema(closes,50),last=c.at(-1),R=rsi(closes),A=atr(c);
- const high=Math.max(...c.slice(-20,-1).map(x=>x.h)),low=Math.min(...c.slice(-20,-1).map(x=>x.l));
- const bias=e20.at(-1)>e50.at(-1)?"BULLISH":"BEARISH",trend=last.c>e20.at(-1)?"UP":"DOWN";
- let side="WAIT",reason="Belum ada konfirmasi entry. Tunggu breakout atau rejection pada level struktur.",entry=last.c,sl=NaN,tp1=NaN,tp2=NaN,score=0;
- const bull=last.c>high&&last.c>e20.at(-1)&&R>52&&R<75;
- const bear=last.c<low&&last.c<e20.at(-1)&&R<48&&R>25;
- if(bull){side="BUY";score=75+(bias==="BULLISH"?10:0);entry=last.c;sl=Math.min(last.l,entry-A*1.2);tp1=entry+(entry-sl)*1.5;tp2=entry+(entry-sl)*2.5;reason="Close menembus swing high 20 candle, berada di atas EMA20, RSI mendukung momentum bullish."}
- if(bear){side="SELL";score=75+(bias==="BEARISH"?10:0);entry=last.c;sl=Math.max(last.h,entry+A*1.2);tp1=entry-(sl-entry)*1.5;tp2=entry-(sl-entry)*2.5;reason="Close menembus swing low 20 candle, berada di bawah EMA20, RSI mendukung momentum bearish."}
- return {side,reason,entry,sl,tp1,tp2,score,R,A,e20:e20.at(-1),e50:e50.at(-1),bias,trend,high,low,last};
+function trendOf(c){
+ if(!c||c.length<55)return {bias:"DATA KURANG",e20:NaN,e50:NaN,R:NaN};
+ const a=c.filter(x=>!x.isOpen),cl=a.map(x=>x.c),e20=ema(cl,20),e50=ema(cl,50);
+ return {bias:e20.at(-1)>e50.at(-1)&&e20.at(-1)>e20.at(-5)?"BULLISH":e20.at(-1)<e50.at(-1)&&e20.at(-1)<e20.at(-5)?"BEARISH":"SIDEWAYS",e20:e20.at(-1),e50:e50.at(-1),R:rsi(cl)};
+}
+function analyse(c,h1,h4){
+ const a=c.filter(x=>!x.isOpen),cl=a.map(x=>x.c),last=a.at(-1),prev=a.at(-2),e20s=ema(cl,20),e50s=ema(cl,50),R=rsi(cl),A=atr(a),e20=e20s.at(-1),e50=e50s.at(-1);
+ const hi=Math.max(...a.slice(-21,-1).map(x=>x.h)),lo=Math.min(...a.slice(-21,-1).map(x=>x.l));
+ const t1=trendOf(h1),t4=trendOf(h4),up=e20>e50&&e20>e20s.at(-5),dn=e20<e50&&e20<e20s.at(-5);
+ const alignedBuy=t1.bias==="BULLISH"&&t4.bias==="BULLISH",alignedSell=t1.bias==="BEARISH"&&t4.bias==="BEARISH";
+ const bullBreak=last.c>hi+A*.05&&last.c>e20&&R>52&&R<78;
+ const bearBreak=last.c<lo-A*.05&&last.c<e20&&R<48&&R>22;
+ const bullPull=up&&last.l<=e20+A*.25&&last.c>e20&&last.c>last.o&&last.c>prev.c&&R>50&&R<70;
+ const bearPull=dn&&last.h>=e20-A*.25&&last.c<e20&&last.c<last.o&&last.c<prev.c&&R<50&&R>30;
+ const fresh=quote&&quote.status==="fresh"&&quote.age<=180;
+ const priceAligned=quote&&Math.abs(quote.price-last.c)<=Math.max(A*2,last.c*.004);
+ let side="WAIT",watch="",reason="Belum ada konfirmasi. Scanner tetap memantau breakout, retest EMA20, dan rejection pada struktur 20 candle.";
+ if((bullBreak||bullPull)&&alignedBuy&&fresh&&priceAligned)side="BUY";
+ else if((bearBreak||bearPull)&&alignedSell&&fresh&&priceAligned)side="SELL";
+ else if(up&&alignedBuy&&R>48&&R<70){side="PANTAU BUY";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bullish. Menunggu pullback ke EMA20 dan candle bullish konfirmasi."}
+ else if(dn&&alignedSell&&R>30&&R<52){side="PANTAU SELL";watch="Area pantau sekitar "+fmt(e20-A*.25)+" – "+fmt(e20+A*.25);reason="Bias H1/H4 bearish. Menunggu pullback ke EMA20 dan candle bearish konfirmasi."}
+ else if(!fresh){reason="Quote spot tidak fresh atau timestamp tidak terverifikasi. Sinyal entry dikunci sampai data segar."}
+ else if(!priceAligned){reason="Harga quote spot berbeda terlalu jauh dari candle chart. Sumber perlu sinkron sebelum setup dinyatakan valid."}
+ else if(!alignedBuy&&!alignedSell){reason="H1 dan H4 belum searah. Scanner menunggu konfluensi multi-timeframe."}
+ const confirmed=side==="BUY"||side==="SELL",entry=last.c;
+ const swingLow=Math.min(...a.slice(-10).map(x=>x.l)),swingHigh=Math.max(...a.slice(-10).map(x=>x.h));
+ const sl=side==="BUY"?swingLow-A*.15:side==="SELL"?swingHigh+A*.15:NaN;
+ const risk=confirmed?Math.abs(entry-sl):NaN;
+ const tp1=side==="BUY"?entry+risk*1.5:side==="SELL"?entry-risk*1.5:NaN;
+ const tp2=side==="BUY"?entry+risk*2.5:side==="SELL"?entry-risk*2.5:NaN;
+ if(confirmed)reason=(side==="BUY"?(bullBreak?"Breakout swing high 20 candle":"Pullback EMA20 bullish"):(bearBreak?"Breakout swing low 20 candle":"Pullback EMA20 bearish"))+". EMA20/50 searah, RSI "+fmt(R)+", dan tren H1/H4 searah.";
+ return {side,watch,reason,entry,sl,tp1,tp2,score:confirmed?Math.min(95,75+(t1.bias===t4.bias?10:0)+(bullBreak||bearBreak?5:0)):0,R,A,e20,e50,bias:up?"BULLISH":dn?"BEARISH":"SIDEWAYS",last,hi,lo,fresh,priceAligned};
 }
 function draw(c){
  const cv=$('chart'),ctx=cv.getContext('2d'),w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#0b121c';ctx.fillRect(0,0,w,h);
@@ -83,21 +137,55 @@ function draw(c){
  const closes=arr.map(x=>x.c);[20,50].forEach((p,j)=>{let e=ema(closes,p);ctx.strokeStyle=j?'#70b7ff':'#e6b94f';ctx.lineWidth=2;ctx.beginPath();e.forEach((v,i)=>{let x=12+i*step+step/2;i?ctx.lineTo(x,py(v)):ctx.moveTo(x,py(v))});ctx.stroke()});
  ctx.fillStyle='#e6b94f';ctx.fillText('EMA20',15,18);ctx.fillStyle='#70b7ff';ctx.fillText('EMA50',80,18);
 }
+
 function paint(tf,c,all){
- const a=analyse(c),p=a.last.c;$('price').textContent=fmt(p);$('change').textContent='Candle terbaru · '+new Date(a.last.t).toLocaleString('id-ID');$('trend1').textContent=all.H1?analyse(all.H1).bias:'—';$('trend4').textContent=all.H4?analyse(all.H4).bias:'—';$('trend1').className='value '+(all.H1&&analyse(all.H1).bias==='BULLISH'?'green':'red');$('trend4').className='value '+(all.H4&&analyse(all.H4).bias==='BULLISH'?'green':'red');
- $('scanner').textContent=a.side==='WAIT'?'SCANNING':a.side;$('scanSub').textContent=a.side==='WAIT'?'Tidak memaksakan sinyal':'Setup terdeteksi pada '+tf;$('rsi').textContent=fmt(a.R);$('atr').textContent=fmt(a.A);$('ema20').textContent=fmt(a.e20);$('ema50').textContent=fmt(a.e50);
- const box=$('signalBox');box.className='signal '+(a.side==='BUY'?'buy':a.side==='SELL'?'sell':'wait');$('signalTag').textContent=a.side;$('signalTitle').textContent=a.side==='WAIT'?'Belum ada entry valid':a.side+' SETUP';$('confidence').textContent=a.side==='WAIT'?'—':'Skor '+Math.min(95,a.score)+' / 100';$('signalReason').textContent=a.reason;
- $('entry').textContent=a.side==='WAIT'?'—':fmt(a.entry);$('sl').textContent=a.side==='WAIT'?'—':fmt(a.sl);$('tp1').textContent=a.side==='WAIT'?'—':fmt(a.tp1);$('tp2').textContent=a.side==='WAIT'?'—':fmt(a.tp2);$('rr').textContent=a.side==='WAIT'?'—':'1 : 1.5 / 2.5';$('invalid').textContent=a.side==='WAIT'?'Tunggu struktur':a.side==='BUY'?'Close kembali di bawah swing high':'Close kembali di atas swing low';
- $('tfLabel').textContent=tf;draw(c);$('count').textContent=c.length;$('lastCandle').textContent=new Date(a.last.t).toLocaleString('id-ID');$('updated').textContent=new Date().toLocaleTimeString('id-ID');$('signalTime').textContent=new Date().toLocaleTimeString('id-ID');
- $('tfRows').innerHTML=['M5','M15','H1','H4'].map(t=>{let d=all[t]?analyse(all[t]):null;return '<tr><td>'+t+'</td><td class="'+(d?.bias==='BULLISH'?'green':'red')+'">'+(d?.bias||'—')+'</td><td>'+(d?fmt(d.R):'—')+'</td><td>'+(d?(d.side==='WAIT'?'Pantau':d.side):'Belum tersedia')+'</td></tr>'}).join('');
+ const a=analyse(c,all.H1,all.H4),t1=trendOf(all.H1),t4=trendOf(all.H4);
+ $("price").textContent=fmt(quote?.price??a.last.c);
+ $("change").textContent=quote?.asOf?"Spot "+(quote.status==="fresh"?"fresh":"stale/unknown")+" · "+jkt(Date.parse(quote.asOf)):"Quote spot tidak tersedia";
+ $("trend1").textContent=t1.bias;$("trend4").textContent=t4.bias;
+ $("trend1").className="value "+(t1.bias==="BULLISH"?"green":t1.bias==="BEARISH"?"red":"gold");
+ $("trend4").className="value "+(t4.bias==="BULLISH"?"green":t4.bias==="BEARISH"?"red":"gold");
+ $("scanner").textContent=a.side;$("scanner").className="value "+(a.side==="BUY"||a.side==="PANTAU BUY"?"green":a.side==="SELL"||a.side==="PANTAU SELL"?"red":"gold");
+ $("scanSub").textContent=a.fresh?"Sumber spot fresh · "+(a.priceAligned?"sumber selaras":"harga perlu sinkron"):"Data tidak fresh — entry dikunci";
+ $("rsi").textContent=fmt(a.R);$("atr").textContent=fmt(a.A);$("ema20").textContent=fmt(a.e20);$("ema50").textContent=fmt(a.e50);
+ const box=$("signalBox");box.className="signal "+(a.side==="BUY"||a.side==="PANTAU BUY"?"buy":a.side==="SELL"||a.side==="PANTAU SELL"?"sell":"wait");
+ $("signalTag").textContent=a.side;$("signalTitle").textContent=a.side==="WAIT"?"Belum ada entry valid":a.side==="BUY"?"BUY terkonfirmasi":a.side==="SELL"?"SELL terkonfirmasi":a.side;
+ $("confidence").textContent=(a.side==="BUY"||a.side==="SELL")?"Skor "+a.score+" / 100":"Menunggu konfirmasi";
+ $("signalReason").textContent=a.reason+(a.watch?" "+a.watch:"");
+ $("entry").textContent=a.side==="BUY"||a.side==="SELL"?fmt(a.entry):a.watch||"—";
+ $("sl").textContent=a.side==="BUY"||a.side==="SELL"?fmt(a.sl):"Belum ditentukan";
+ $("tp1").textContent=a.side==="BUY"||a.side==="SELL"?fmt(a.tp1):"Belum ditentukan";
+ $("tp2").textContent=a.side==="BUY"||a.side==="SELL"?fmt(a.tp2):"Belum ditentukan";
+ $("rr").textContent=a.side==="BUY"||a.side==="SELL"?"1 : 1.5 / 2.5":"—";
+ $("invalid").textContent=a.side==="BUY"?"Close di bawah swing low":a.side==="SELL"?"Close di atas swing high":a.side==="PANTAU BUY"?"Bias H1/H4 berubah bearish":a.side==="PANTAU SELL"?"Bias H1/H4 berubah bullish":"Tunggu setup valid";
+ $("tfLabel").textContent=tf;draw(c);$("count").textContent=c.length;
+ $("lastCandle").textContent=jkt(a.last.t);$("updated").textContent=quote?.asOf?jkt(Date.parse(quote.asOf)):"—";$("signalTime").textContent=jkt(a.last.t);
+ $("tfRows").innerHTML=["M5","M15","H1","H4"].map(t=>{
+  const d=analyse(all[t],all.H1,all.H4),bias=trendOf(all[t]).bias;
+  return "<tr><td>"+t+"</td><td class='"+(bias==="BULLISH"?"green":bias==="BEARISH"?"red":"gold")+"'>"+bias+"</td><td>"+fmt(d.R)+"</td><td>"+(d.side==="BUY"||d.side==="SELL"?d.side:d.side.startsWith("PANTAU")?d.side:"Pantau")+"</td></tr>";
+ }).join("");
 }
 async function load(){
- if(refreshing)return;refreshing=true;$('refresh').disabled=true;$('error').style.display='none';$('connection').textContent='Mengambil candle...';
- try{const c=await fetchCandles(currentTF);datasets[currentTF]=c;paint(currentTF,c,datasets);$('dot').className='dot ok';$('connection').textContent='Feed aktif';$('feedName').textContent='Dukascopy';}
- catch(e){$('dot').className='dot';$('connection').textContent='Feed belum tersambung';$('scanner').textContent='DATA ERROR';$('scanSub').textContent='Tidak memakai harga simulasi';$('error').style.display='block';$('error').textContent=e.message;draw(null)}
- finally{refreshing=false;$('refresh').disabled=false}
+ if(refreshing)return;refreshing=true;$("refresh").disabled=true;$("error").style.display="none";$("connection").textContent="Mengambil quote & candle...";
+ try{
+  await fetchSeries();
+  const active=datasets[currentTF];
+  if(!active)throw new Error("Data timeframe "+currentTF+" belum tersedia.");
+  paint(currentTF,active,datasets);
+  $("dot").className="dot "+(quote.status==="fresh"&&quote.age<=180?"ok":"");
+  $("connection").textContent=quote.status==="fresh"&&quote.age<=180?"Spot feed fresh":"Spot feed stale/unknown";
+  $("feedName").textContent="XAUS spot quote + OHLC chart (Yahoo Finance proxy)";
+  $("error").style.display="block";
+  $("error").textContent="Sumber quote: XAUS XAU/USD · "+quote.status+" · umur data "+(Number.isFinite(quote.age)?Math.round(quote.age)+" detik":"tidak diketahui")+". Candle OHLC historis berasal dari endpoint chart XAUS yang memakai proxy Yahoo Finance; bukan kutipan broker. Harga broker dapat berbeda.";
+  $("error").style.borderLeftColor="#70b7ff";$("error").style.background="#152335";$("error").style.color="#c8ddf7";
+ }catch(e){
+  $("dot").className="dot";$("connection").textContent="Feed gagal";
+  $("scanner").textContent="DATA ERROR";$("scanSub").textContent="Tidak memakai harga simulasi";
+  $("error").style.display="block";$("error").style.borderLeftColor="#e6b94f";$("error").style.background="#302819";$("error").style.color="#e8d6a8";$("error").textContent=e.message+" Tidak ada harga atau sinyal simulasi yang ditampilkan.";
+  draw(null);
+ }finally{refreshing=false;$("refresh").disabled=false}
 }
-document.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{currentTF=b.dataset.tf;document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('active',x===b));load()});
-$('refresh').onclick=load;load();setInterval(load,60000);
+document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{currentTF=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("active",x===b));if(datasets[currentTF])paint(currentTF,datasets[currentTF],datasets);else load()});
+$("refresh").onclick=load;load();setInterval(load,60000);
 </script>
 </body></html>
