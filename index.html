@@ -32,13 +32,15 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 <div class="signal wait" id="signalBox"><div class="row"><strong class="tag" id="signalTag">MENUNGGU DATA</strong><span class="muted" id="confidence">—</span></div><div style="font-size:21px;font-weight:800;margin:13px 0 5px" id="signalTitle">Belum ada setup</div><div class="muted" id="signalReason">Mengambil data candle aktual dari feed publik.</div><div class="grid2"><div class="kv"><span>Entry / area</span><b id="entry">—</b></div><div class="kv"><span>Stop Loss</span><b id="sl">—</b></div><div class="kv"><span>Take Profit 1</span><b id="tp1">—</b></div><div class="kv"><span>Take Profit 2</span><b id="tp2">—</b></div><div class="kv"><span>Risk : Reward</span><b id="rr">—</b></div><div class="kv"><span>Invalidasi</span><b id="invalid">—</b></div></div></div>
 <div class="label" style="margin-top:18px">Multi-timeframe scanner</div><table class="table"><thead><tr><th>TF</th><th>Bias</th><th>RSI</th><th>Status</th></tr></thead><tbody id="tfRows"><tr><td colspan="4" class="muted">Menunggu data...</td></tr></tbody></table>
 </div>
-<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">XAUS quote + OHLC chart (Yahoo Finance proxy)</strong></div><div class="toolbar"><label class="btn" for="brokerCsv">Impor CSV broker</label><input id="brokerCsv" type="file" accept=".csv,.txt" style="display:none"><button class="btn" id="refresh">↻ Refresh data</button></div></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Mode publik memakai XAUS chart (proxy Yahoo Finance), bukan feed broker. Untuk mencocokkan persis dengan chart broker, ekspor riwayat candle M5 XAUUSD dari platform broker sebagai CSV lalu pilih “Impor CSV broker”. Radar akan menghitung M15/H1/H4 dari candle M5 yang sama. Tanpa CSV broker, perbedaan historis tetap mungkin. Sinyal hanya referensi teknikal, bukan jaminan profit. Verifikasi spread, harga broker, ukuran posisi, dan risiko sebelum entry.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
+<div class="panel wide"><div class="row"><div><div class="label">Data & transparansi</div><strong id="feedName">Biquote OHLC / XAUS fallback</strong></div><div class="toolbar"><label class="btn" for="brokerCsv">Impor CSV broker</label><input id="brokerCsv" type="file" accept=".csv,.txt" style="display:none"><button class="btn" id="refresh">↻ Refresh data</button></div></div><div class="row" style="margin-top:12px;flex-wrap:wrap"><span class="muted">Candle terakhir: <b id="lastCandle">—</b></span><span class="muted">Diperbarui: <b id="updated">—</b></span><span class="muted">Jumlah candle: <b id="count">0</b></span></div><p class="foot">Mode publik memprioritaskan Biquote OHLC (tick/MT5); XAUS proxy Yahoo Finance hanya fallback, bukan feed broker Anda. Untuk mencocokkan persis dengan chart broker, ekspor riwayat candle M5 XAUUSD dari platform broker sebagai CSV lalu pilih “Impor CSV broker”. Radar akan menghitung M15/H1/H4 dari candle M5 yang sama. Tanpa CSV broker, perbedaan historis tetap mungkin. Sinyal hanya referensi teknikal, bukan jaminan profit. Verifikasi spread, harga broker, ukuran posisi, dan risiko sebelum entry.</p><div id="error" class="notice" style="display:none;margin-top:10px"></div></div>
 </section>
 </main>
 <script>
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toFixed(2):"—";
 let currentTF="M5",datasets={},refreshing=false,quote=null,feedStamp=null,feedStatus="unknown",brokerImported=false;
 const API="https://xaus.com/api/v1";
+const BIQUOTE="https://biquote.io/api";
+let activeFeed="unknown";
 const jkt=t=>new Date(t).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"});
 async function getJSON(url){
  const r=await fetch(url,{cache:"no-store"});
@@ -59,26 +61,23 @@ function normaliseBars(data){
  return bars;
 }
 async function fetchSeries(){
- const [m5,m15,h1]=await Promise.all([
-  getJSON(API+"/chart?symbol=xau&range=5d&interval=5m"),
-  getJSON(API+"/chart?symbol=xau&range=5d&interval=15m"),
-  getJSON(API+"/chart?symbol=xau&range=3mo&interval=1h")
- ]);
- datasets.M5=normaliseBars(m5);
- datasets.M15=normaliseBars(m15);
- datasets.H1=normaliseBars(h1);
- datasets.H4=aggregate(datasets.H1,4);
- if(datasets.H4.length<55)throw new Error("Data H4 hasil agregasi belum cukup untuk EMA50.");
- // Freshness harus dinilai pada timeframe yang sedang dilihat.
- // Candle H4 yang dibuka pukul 17:00 WIB masih aktif sampai 21:00 WIB.
- const latest=(datasets[currentTF]||datasets.M15).at(-1);
- const age=Math.max(0,(Date.now()-latest.t)/1000);
- const tfSeconds=({M5:300,M15:900,H1:3600,H4:14400})[currentTF]||900;
- const maxAge=tfSeconds+600;
- quote={price:latest.c,asOf:new Date(latest.t).toISOString(),age,status:age<=maxAge?"fresh":"stale"};
- feedStatus=quote.status;
- feedStamp=latest.t;
- return {chartMeta:m15};
+ try{
+  const [m5,m15,h1,h4]=await Promise.all(["5m","15m","1h","4h"].map(interval=>getJSON(BIQUOTE+"/XAUUSD/ohlc?interval="+interval+"&limit=300")));
+  datasets.M5=normaliseBars(m5);datasets.M15=normaliseBars(m15);datasets.H1=normaliseBars(h1);datasets.H4=normaliseBars(h4);
+  for(const tf of ["M5","M15","H1","H4"])if(datasets[tf].length<55)throw new Error("Biquote "+tf+" candle kurang dari 55.");
+  const latest=datasets[currentTF].at(-1),age=Math.max(0,(Date.now()-latest.t)/1000),secs=({M5:300,M15:900,H1:3600,H4:14400})[currentTF]||300;
+  quote={price:latest.c,asOf:new Date(latest.t).toISOString(),age,status:latest.isOpen||age<=secs+600?"fresh":"stale"};
+  feedStatus=quote.status;feedStamp=latest.t;activeFeed="Biquote OHLC · tick/MT5";
+  return {chartMeta:m5};
+ }catch(biquoteError){
+  const [m5,m15,h1]=await Promise.all([getJSON(API+"/chart?symbol=xau&range=5d&interval=5m"),getJSON(API+"/chart?symbol=xau&range=5d&interval=15m"),getJSON(API+"/chart?symbol=xau&range=3mo&interval=1h")]);
+  datasets.M5=normaliseBars(m5);datasets.M15=normaliseBars(m15);datasets.H1=normaliseBars(h1);datasets.H4=aggregate(datasets.H1,4);
+  if(datasets.H4.length<55)throw new Error("Data H4 tidak cukup. Biquote gagal: "+biquoteError.message);
+  const latest=datasets[currentTF].at(-1),age=Math.max(0,(Date.now()-latest.t)/1000),secs=({M5:300,M15:900,H1:3600,H4:14400})[currentTF]||300;
+  quote={price:latest.c,asOf:new Date(latest.t).toISOString(),age,status:age<=secs+600?"fresh":"stale"};
+  feedStatus=quote.status;feedStamp=latest.t;activeFeed="XAUS OHLC · proxy Yahoo Finance (fallback)";
+  return {chartMeta:m15};
+ }
 }
 function parseBrokerCSV(text){
  const lines=text.replace(/^\\uFEFF/,"").split(/\\r?\\n/).filter(x=>x.trim());
@@ -221,9 +220,9 @@ async function load(){
   paint(currentTF,active,datasets);
   $("dot").className="dot "+(quote.status==="fresh"&&quote.age<=180?"ok":"");
   $("connection").textContent=quote.status==="fresh"?"Candle "+currentTF+" fresh":"Candle "+currentTF+" stale";
-  $("feedName").textContent="XAUS OHLC chart · feed spot indikatif, bukan broker";
+  $("feedName").textContent=activeFeed;
   $("error").style.display="block";
-  $("error").textContent="Sumber: XAUS OHLC chart (proxy Yahoo Finance) · candle "+currentTF+" "+quote.status+" · umur candle "+(Number.isFinite(quote.age)?Math.round(quote.age/60)+" menit":"tidak diketahui")+". Candle H4 aktif dapat berumur hingga 4 jam sejak pembukaan. Harga broker dapat berbeda."
+  $("error").textContent="Sumber: "+activeFeed+" · candle "+currentTF+" "+quote.status+" · umur candle "+(Number.isFinite(quote.age)?Math.round(quote.age/60)+" menit":"tidak diketahui")+". Candle H4 aktif dapat berumur hingga 4 jam sejak pembukaan. Harga broker dapat berbeda."
   $("error").style.borderLeftColor="#70b7ff";$("error").style.background="#152335";$("error").style.color="#c8ddf7";
  }catch(e){
   $("dot").className="dot";$("connection").textContent="Feed gagal";
