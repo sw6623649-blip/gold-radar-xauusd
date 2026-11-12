@@ -87,7 +87,7 @@ function parseBrokerCSV(text){
  const split=line=>line.split(delim).map(x=>x.trim().replace(/^"|"$/g,""));
  const headers=split(lines[0]).map(x=>x.toLowerCase().replace(/[<>]/g,"").replace(/\\s+/g,""));
  const find=(...names)=>headers.findIndex(h=>names.includes(h));
- const di=find("datetime","date time","time","timestamp"),datei=find("date"),timei=find("hour");
+ const di=find("datetime","timestamp"),datei=find("date"),timei=find("time","hour");
  const oi=find("open"),hi=find("high"),li=find("low"),ci=find("close"),vi=find("tickvol","tick_volume","volume");
  if([oi,hi,li,ci].some(x=>x<0))throw new Error("Kolom CSV harus memiliki Open, High, Low, Close.");
  const bars=[];
