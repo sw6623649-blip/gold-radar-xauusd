@@ -16,7 +16,7 @@ main{max-width:1440px;margin:auto;padding:22px;display:grid;gap:16px}.top{displa
 <header><div><div class="brand"><b>GOLD</b> RADAR <span class="muted">/ XAUUSD</span></div><div class="muted" style="font-size:11px;margin-top:4px">MARKET SCANNER · TECHNICAL ANALYSIS</div></div><div class="status"><span id="dot" class="dot"></span><span id="connection">Memuat data...</span></div></header>
 <main>
 <section class="top">
-<div class="panel"><div class="label">Harga spot XAU/USD · USD/oz</div><div class="price" id="price">—</div><div class="muted" id="change">Menunggu quote live</div></div>
+<div class="panel"><div class="label">Harga spot XAU/USD · USD/oz</div><div class="price" id="price">—</div><div class="muted" id="change">Menunggu quote live</div><div class="foot" id="xausQuote" style="margin-top:8px">XAUS pembanding: memeriksa harga spot…</div></div>
 <div class="panel"><div class="label">Tren H1</div><div class="value" id="trend1">—</div><div class="muted" id="trend1sub">EMA 20 / 50</div></div>
 <div class="panel"><div class="label">Tren H4</div><div class="value" id="trend4">—</div><div class="muted" id="trend4sub">EMA 20 / 50</div></div>
 <div class="panel"><div class="label">Kondisi scanner</div><div class="value gold" id="scanner">SCANNING</div><div class="muted" id="scanSub">Mencari BUY dan SELL</div></div>
@@ -40,7 +40,7 @@ const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toFixed(2):"
 let currentTF="M5",datasets={},refreshing=false,quote=null,feedStamp=null,feedStatus="unknown",brokerImported=false;
 const API="https://xaus.com/api/v1";
 const BIQUOTE="https://biquote.io/api";
-let activeFeed="unknown";
+let activeFeed="unknown",xausSpot=null;
 const jkt=t=>new Date(t).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"});
 async function getJSON(url){
  const r=await fetch(url,{cache:"no-store"});
@@ -59,6 +59,14 @@ function normaliseBars(data){
  .sort((a,b)=>a.t-b.t);
  if(bars.length<55)throw new Error("Data chart hanya mengembalikan "+bars.length+" candle; minimum 55 dibutuhkan untuk EMA50.");
  return bars;
+}
+async function fetchXausSpot(){
+ try{
+  const d=await getJSON(API+"/spot?compact=1");
+  const state=d.data_state||{},price=Number(d.spot_usd_oz),age=Number(state.age_seconds);
+  const fresh=state.status==="fresh"&&Number.isFinite(price)&&price>0&&Number.isFinite(age)&&age<=180&&d.stale!==true;
+  xausSpot={price,age,status:fresh?"fresh":"stale",asOf:state.as_of||d.price_as_of||d.updated_at,source:state.source||d.source||"XAUS"};
+ }catch(e){xausSpot={status:"unavailable",error:e.message};}
 }
 async function fetchSeries(){
  try{
@@ -197,7 +205,7 @@ function draw(c){
 
 function paint(tf,c,all){
  const a=analyse(c,all.H1,all.H4),t1=trendOf(all.H1),t4=trendOf(all.H4);
- $("price").textContent=fmt(quote?.status==="fresh"?quote.price:a.last.c);
+ $("price").textContent=fmt(quote?.status==="fresh"?quote.price:a.last.c);\n const xa=$("xausQuote");if(xa){if(xausSpot?.status==="fresh"){const delta=quote?.status==="fresh"?(" · selisih "+fmt(xausSpot.price-quote.price)+" USD"):"";xa.textContent="XAUS spot pembanding: $"+fmt(xausSpot.price)+" · fresh · umur "+Math.round(xausSpot.age)+" dtk"+delta;}else if(xausSpot?.status==="stale"){xa.textContent="XAUS spot pembanding: $"+fmt(xausSpot.price)+" · STALE · tidak dipakai untuk sinyal";}else{xa.textContent="XAUS spot pembanding: tidak tersedia · tidak dipakai untuk sinyal";}}
  $("change").textContent=quote?.status==="fresh"?"Quote live "+(quote.source||"Biquote")+" · "+jkt(Date.parse(quote.asOf)):"Harga candle "+tf+" · "+jkt(a.last.t);
  $("trend1").textContent=t1.bias;$("trend4").textContent=t4.bias;
  $("trend1").className="value "+(t1.bias==="BULLISH"?"green":t1.bias==="BEARISH"?"red":"gold");
@@ -225,7 +233,7 @@ function paint(tf,c,all){
 async function load(){
  if(refreshing)return;refreshing=true;$("refresh").disabled=true;$("error").style.display="none";$("connection").textContent="Mengambil quote & candle...";
  try{
-  await fetchSeries();
+  await Promise.all([fetchSeries(),fetchXausSpot()]);
   const active=datasets[currentTF];
   if(!active)throw new Error("Data timeframe "+currentTF+" belum tersedia.");
   paint(currentTF,active,datasets);
